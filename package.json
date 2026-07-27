@@ -1,0 +1,15 @@
+{
+  "name": "sakhare-plot-hostel-management",
+  "version": "1.0.0",
+  "description": "Full-stack Hostel Management System Web Application",
+  "main": "backend/server.js",
+  "scripts": {
+    "install-all": "cd backend && npm install && cd ../frontend && npm install",
+    "backend": "cd backend && npm run dev",
+    "frontend": "cd frontend && npm run dev",
+    "dev": "node -e \"const { spawn } = require('child_process'); spawn('npm', ['run', 'dev'], { cwd: './backend', stdio: 'inherit', shell: true }); spawn('npm', ['run', 'dev'], { cwd: './frontend', stdio: 'inherit', shell: true });\""
+  },
+  "keywords": ["hostel", "management", "system", "react", "express", "sqlite", "tailwind"],
+  "author": "Sakhare Plot Hostel",
+  "license": "MIT"
+}
