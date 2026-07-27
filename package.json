@@ -1,15 +1,30 @@
 {
-  "name": "sakhare-plot-hostel-management",
+  "name": "sakhare-plot-management-system",
   "version": "1.0.0",
-  "description": "Full-stack Hostel Management System Web Application",
-  "main": "backend/server.js",
+  "description": "Sakhare Plot - Premium Responsive Hostel Management System Web Application",
+  "main": "server.js",
   "scripts": {
-    "install-all": "cd backend && npm install && cd ../frontend && npm install",
-    "backend": "cd backend && npm run dev",
-    "frontend": "cd frontend && npm run dev",
-    "dev": "node -e \"const { spawn } = require('child_process'); spawn('npm', ['run', 'dev'], { cwd: './backend', stdio: 'inherit', shell: true }); spawn('npm', ['run', 'dev'], { cwd: './frontend', stdio: 'inherit', shell: true });\""
+    "start": "node server.js",
+    "dev": "node server.js"
   },
-  "keywords": ["hostel", "management", "system", "react", "express", "sqlite", "tailwind"],
-  "author": "Sakhare Plot Hostel",
-  "license": "MIT"
+  "keywords": [
+    "hostel",
+    "management-system",
+    "react",
+    "express",
+    "mongodb",
+    "tailwind",
+    "upi-qr",
+    "light-bill"
+  ],
+  "author": "Antigravity Team",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.4.1"
+  }
 }
