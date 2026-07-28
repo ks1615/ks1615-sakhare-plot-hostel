@@ -479,8 +479,19 @@ async function handleRequest(req, res) {
     return res.end();
   }
 
-  const parsedUrl = url.parse(req.url, true);
-  const pathname = parsedUrl.pathname;
+  const rawUrl = req.url || '';
+  const parsedUrl = url.parse(rawUrl, true);
+  let pathname = parsedUrl.pathname || '/';
+
+  // Normalize path if Vercel serverless function stripped '/api'
+  if (!pathname.startsWith('/api')) {
+    if (pathname === '/' || pathname === '') {
+      pathname = '/api';
+    } else {
+      pathname = '/api' + (pathname.startsWith('/') ? pathname : '/' + pathname);
+    }
+  }
+
   const method = req.method;
 
   // Extract Auth User if present
