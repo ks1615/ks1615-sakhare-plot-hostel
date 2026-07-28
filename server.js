@@ -479,9 +479,17 @@ async function handleRequest(req, res) {
     return res.end();
   }
 
-  const rawUrl = req.url || '';
+  let rawUrl = req.url || '';
+
+  // If Vercel catch-all function [...path].js passed req.query.path
+  if (req.query && req.query.path) {
+    const pathArr = Array.isArray(req.query.path) ? req.query.path : [req.query.path];
+    rawUrl = '/api/' + pathArr.join('/');
+  }
+
   const parsedUrl = url.parse(rawUrl, true);
   let pathname = parsedUrl.pathname || '/';
+  pathname = pathname.split('?')[0];
 
   // Normalize path if Vercel serverless function stripped '/api'
   if (!pathname.startsWith('/api')) {
