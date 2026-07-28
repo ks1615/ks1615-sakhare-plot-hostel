@@ -4,7 +4,7 @@ const path = require('path');
 const url = require('url');
 const crypto = require('crypto');
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 const JWT_SECRET = process.env.JWT_SECRET || 'hostelflow_super_secret_jwt_key_2026';
 
 // Database persistence path
@@ -317,11 +317,36 @@ if (!fs.existsSync(DB_FILE)) {
 }
 
 function getDB() {
+  let db;
   try {
-    return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   } catch (err) {
-    return initialSeed;
+    db = { ...initialSeed };
   }
+  db.users = db.users || initialSeed.users || [];
+  db.students = db.students || initialSeed.students || [];
+  db.payments = db.payments || initialSeed.payments || [];
+  db.lightBills = db.lightBills || initialSeed.lightBills || [];
+  db.parkingSlots = db.parkingSlots || initialSeed.parkingSlots || [];
+  db.gateLogs = db.gateLogs || initialSeed.gateLogs || [];
+  db.rules = db.rules || initialSeed.rules || [];
+  db.rooms = db.rooms || [
+    { id: 'rm-1', room_number: '101', floor: 1, capacity: 2, type: 'Double Sharing', ac_type: 'Non-AC', monthly_rent: 6500, status: 'occupied', occupied_beds: 2, amenities: ['Wi-Fi', 'Study Table', 'Attached Bath'] },
+    { id: 'rm-2', room_number: '102', floor: 1, capacity: 2, type: 'Double Sharing', ac_type: 'AC', monthly_rent: 7000, status: 'occupied', occupied_beds: 1, amenities: ['Wi-Fi', 'AC', 'Attached Bath'] },
+    { id: 'rm-3', room_number: '201', floor: 2, capacity: 2, type: 'Double Sharing', ac_type: 'Non-AC', monthly_rent: 6500, status: 'occupied', occupied_beds: 1, amenities: ['Wi-Fi', 'Study Table'] },
+    { id: 'rm-4', room_number: '202', floor: 2, capacity: 2, type: 'Double Sharing', ac_type: 'Non-AC', monthly_rent: 6800, status: 'occupied', occupied_beds: 1, amenities: ['Wi-Fi', 'Study Table'] }
+  ];
+  db.complaints = db.complaints || [
+    { id: 'c-1', student_id: 's-101', student_name: 'Rahul Verma', room_number: '101', category: 'Plumbing', title: 'Bathroom Tap Leakage', description: 'Water tap leaking continuously in Room 101 bathroom.', priority: 'Medium', status: 'Pending', created_at: new Date().toISOString() }
+  ];
+  db.leaves = db.leaves || [
+    { id: 'l-1', student_id: 's-101', student_name: 'Rahul Verma', room_number: '101', start_date: '2026-08-01', end_date: '2026-08-05', reason: 'Visiting family in hometown', status: 'Pending', created_at: new Date().toISOString() }
+  ];
+  db.notices = db.notices || [
+    { id: 'n-1', title: 'Monthly Maintenance Notice', content: 'Water tank cleaning is scheduled for Sunday from 8:00 AM to 11:00 AM.', category: 'Maintenance', is_pinned: true, created_at: new Date().toISOString() }
+  ];
+  db.settings = db.settings || initialSeed.settings || {};
+  return db;
 }
 
 function saveDB(data) {
@@ -517,6 +542,97 @@ const server = http.createServer(async (req, res) => {
         hostelName: db.settings.hostelName,
         upiId: db.settings.upiId
       }
+    }));
+  }
+
+  // GET /api/auth/me
+  if (pathname === '/api/auth/me' && method === 'GET') {
+    if (!authUser) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Unauthorized: Invalid or missing token' }));
+    }
+    const db = getDB();
+    const userObj = db.users.find(u => u.id === authUser.id || u.email === authUser.email) || {
+      id: authUser.id || 'u-1',
+      name: authUser.name || 'Sandeep Sakhare (Owner)',
+      email: authUser.email || 'kskrushna1615@gmail.com',
+      role: authUser.role || 'admin',
+      roomNo: authUser.roomNo || null,
+      phone: '+91 98765 43210'
+    };
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      user: {
+        id: userObj.id,
+        name: userObj.name,
+        email: userObj.email,
+        role: userObj.role,
+        roomNo: userObj.roomNo || null,
+        phone: userObj.phone,
+        hostelName: db.settings.hostelName,
+        upiId: db.settings.upiId
+      }
+    }));
+  }
+
+  // POST /api/auth/quick-login
+  if (pathname === '/api/auth/quick-login' && method === 'POST') {
+    const body = await parseRequestBody(req);
+    const db = getDB();
+    const targetRole = body.role || 'owner';
+    const userObj = db.users.find(u =>
+      body.email ? u.email === body.email : (targetRole === 'owner' ? (u.role === 'admin' || u.role === 'owner') : u.role === targetRole)
+    ) || db.users[0];
+
+    const token = createJWT({ id: userObj.id, name: userObj.name, email: userObj.email, role: userObj.role, roomNo: userObj.roomNo || null });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      message: 'Quick login successful',
+      token,
+      user: {
+        id: userObj.id,
+        name: userObj.name,
+        email: userObj.email,
+        role: userObj.role,
+        roomNo: userObj.roomNo || null,
+        phone: userObj.phone,
+        hostelName: db.settings.hostelName,
+        upiId: db.settings.upiId
+      }
+    }));
+  }
+
+  // POST /api/auth/register
+  if (pathname === '/api/auth/register' && method === 'POST') {
+    const body = await parseRequestBody(req);
+    const db = getDB();
+    if (!body.email || !body.name || !body.password) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Name, email and password required' }));
+    }
+    const existing = db.users.find(u => u.email.toLowerCase() === body.email.toLowerCase().trim());
+    if (existing) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Email is already registered' }));
+    }
+    const newUser = {
+      id: 'u-' + Date.now(),
+      name: body.name,
+      email: body.email.toLowerCase().trim(),
+      password: body.password,
+      role: body.role === 'owner' ? 'admin' : 'student',
+      phone: body.phone || '',
+      hostelName: db.settings.hostelName,
+      upiId: db.settings.upiId
+    };
+    db.users.push(newUser);
+    saveDB(db);
+    const token = createJWT({ id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role });
+    res.writeHead(201, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      message: 'Registration successful',
+      token,
+      user: { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role, phone: newUser.phone }
     }));
   }
 
@@ -783,6 +899,157 @@ const server = http.createServer(async (req, res) => {
     }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ message: 'Rule deleted' }));
+  }
+
+  // --- ROOMS API ---
+  if (pathname === '/api/rooms' && method === 'GET') {
+    const db = getDB();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ rooms: db.rooms }));
+  }
+
+  if (pathname === '/api/rooms' && method === 'POST') {
+    const body = await parseRequestBody(req);
+    const db = getDB();
+    const newRoom = {
+      id: 'rm-' + Date.now(),
+      room_number: body.room_number || body.roomNo || '101',
+      floor: Number(body.floor) || 1,
+      capacity: Number(body.capacity) || 2,
+      type: body.type || 'Double Sharing',
+      ac_type: body.ac_type || 'Non-AC',
+      monthly_rent: Number(body.monthly_rent || body.monthlyRent) || 6500,
+      status: 'vacant',
+      occupied_beds: 0,
+      amenities: body.amenities || ['Wi-Fi', 'Study Table']
+    };
+    db.rooms.push(newRoom);
+    saveDB(db);
+    res.writeHead(201, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ message: 'Room created', room: newRoom }));
+  }
+
+  // --- COMPLAINTS API ---
+  if (pathname === '/api/complaints' && method === 'GET') {
+    const db = getDB();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ complaints: db.complaints }));
+  }
+
+  if (pathname === '/api/complaints' && method === 'POST') {
+    const body = await parseRequestBody(req);
+    const db = getDB();
+    const newComplaint = {
+      id: 'c-' + Date.now(),
+      student_id: body.student_id || authUser?.id || 's-101',
+      student_name: body.student_name || authUser?.name || 'Student',
+      room_number: body.room_number || body.roomNo || '101',
+      category: body.category || 'General',
+      title: body.title,
+      description: body.description,
+      priority: body.priority || 'Medium',
+      status: 'Pending',
+      created_at: new Date().toISOString()
+    };
+    db.complaints.push(newComplaint);
+    saveDB(db);
+    res.writeHead(201, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ message: 'Complaint registered', complaint: newComplaint }));
+  }
+
+  if (pathname.startsWith('/api/complaints/') && method === 'PUT') {
+    const id = pathname.split('/')[3];
+    const body = await parseRequestBody(req);
+    const db = getDB();
+    const comp = db.complaints.find(c => c.id === id);
+    if (comp) {
+      if (body.status) comp.status = body.status;
+      saveDB(db);
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ message: 'Complaint updated', complaint: comp }));
+  }
+
+  // --- LEAVES API ---
+  if (pathname === '/api/leaves' && method === 'GET') {
+    const db = getDB();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ leaves: db.leaves }));
+  }
+
+  if (pathname === '/api/leaves' && method === 'POST') {
+    const body = await parseRequestBody(req);
+    const db = getDB();
+    const newLeave = {
+      id: 'l-' + Date.now(),
+      student_id: body.student_id || authUser?.id || 's-101',
+      student_name: body.student_name || authUser?.name || 'Student',
+      room_number: body.room_number || body.roomNo || '101',
+      start_date: body.start_date || body.startDate,
+      end_date: body.end_date || body.endDate,
+      reason: body.reason,
+      status: 'Pending',
+      created_at: new Date().toISOString()
+    };
+    db.leaves.push(newLeave);
+    saveDB(db);
+    res.writeHead(201, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ message: 'Leave request submitted', leave: newLeave }));
+  }
+
+  if (pathname.startsWith('/api/leaves/') && method === 'PUT') {
+    const id = pathname.split('/')[3];
+    const body = await parseRequestBody(req);
+    const db = getDB();
+    const leave = db.leaves.find(l => l.id === id);
+    if (leave) {
+      if (body.status) leave.status = body.status;
+      saveDB(db);
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ message: 'Leave request updated', leave }));
+  }
+
+  // --- NOTICES API ---
+  if (pathname === '/api/notices' && method === 'GET') {
+    const db = getDB();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ notices: db.notices }));
+  }
+
+  if (pathname === '/api/notices' && method === 'POST') {
+    const body = await parseRequestBody(req);
+    const db = getDB();
+    const newNotice = {
+      id: 'n-' + Date.now(),
+      title: body.title,
+      content: body.content,
+      category: body.category || 'General',
+      is_pinned: body.is_pinned || false,
+      created_at: new Date().toISOString()
+    };
+    db.notices.push(newNotice);
+    saveDB(db);
+    res.writeHead(201, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ message: 'Notice posted', notice: newNotice }));
+  }
+
+  if (pathname.startsWith('/api/notices/') && method === 'DELETE') {
+    const id = pathname.split('/')[3];
+    const db = getDB();
+    const idx = db.notices.findIndex(n => n.id === id);
+    if (idx !== -1) {
+      db.notices.splice(idx, 1);
+      saveDB(db);
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ message: 'Notice deleted' }));
+  }
+
+  // --- API 404 FALLBACK ---
+  if (pathname.startsWith('/api/')) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ error: `API route not found: ${method} ${pathname}` }));
   }
 
   // --- STATIC FILE SERVING FOR FRONTEND ---

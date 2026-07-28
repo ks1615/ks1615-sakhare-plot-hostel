@@ -43,6 +43,11 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// 404 Fallback for unhandled API routes
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Unhandled Error:', err.stack);

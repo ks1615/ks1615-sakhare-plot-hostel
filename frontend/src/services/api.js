@@ -16,10 +16,44 @@ export async function fetchApi(endpoint, options = {}) {
 
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-    const data = await response.json();
+    const contentType = response.headers.get('content-type') || '';
+
+    let data = null;
+    let isJson = false;
+
+    if (contentType.includes('application/json')) {
+      try {
+        data = await response.json();
+        isJson = true;
+      } catch (e) {
+        isJson = false;
+      }
+    }
 
     if (!response.ok) {
-      throw new Error(data.error || data.message || `API error (${response.status})`);
+      let errorMsg;
+      if (isJson && data && (data.error || data.message)) {
+        errorMsg = data.error || data.message;
+      } else {
+        const text = await response.text().catch(() => '');
+        const cleanText = text.replace(/<[^>]*>?/gm, '').trim();
+        errorMsg = cleanText
+          ? (cleanText.length > 120 ? `${cleanText.slice(0, 120)}...` : cleanText)
+          : `Server HTTP error (${response.status}: ${response.statusText || 'Bad Response'})`;
+      }
+      throw new Error(errorMsg);
+    }
+
+    if (!isJson) {
+      const text = await response.text().catch(() => '');
+      if (text) {
+        try {
+          return JSON.parse(text);
+        } catch (e) {
+          // Fallback if plain string
+        }
+      }
+      throw new Error('Server returned non-JSON response.');
     }
 
     return data;
@@ -28,3 +62,4 @@ export async function fetchApi(endpoint, options = {}) {
     throw err;
   }
 }
+
