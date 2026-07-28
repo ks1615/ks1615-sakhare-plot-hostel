@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 5001;
 const JWT_SECRET = process.env.JWT_SECRET || 'hostelflow_super_secret_jwt_key_2026';
 
 // Database persistence path
-const DATA_DIR = path.join(__dirname, 'server/data');
+const DATA_DIR = process.env.VERCEL ? path.join('/tmp', 'server', 'data') : path.join(__dirname, 'server/data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 // Initial seed data
@@ -350,7 +350,11 @@ function getDB() {
 }
 
 function saveDB(data) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+  } catch (err) {
+    console.error('Error saving DB:', err);
+  }
 }
 
 // Simple Native JWT Encoder & Verifier using Crypto HMAC-SHA256
@@ -435,12 +439,15 @@ function generateMonthlyLedger(student, payments) {
 
 // Helper to parse JSON request body
 function parseRequestBody(req) {
-  return new Promise((resolve, reject) => {
+  if (req.body && typeof req.body === 'object') {
+    return Promise.resolve(req.body);
+  }
+  return new Promise((resolve) => {
     let body = '';
     req.on('data', chunk => { body += chunk.toString(); });
     req.on('end', () => {
       try {
-        resolve(body ? JSON.parse(body) : {});
+        resolve(body ? (typeof body === 'string' ? JSON.parse(body) : body) : {});
       } catch (err) {
         resolve({});
       }
@@ -461,7 +468,7 @@ const MIME_TYPES = {
 };
 
 // Native HTTP Server Handler
-const server = http.createServer(async (req, res) => {
+async function handleRequest(req, res) {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -1071,10 +1078,16 @@ const server = http.createServer(async (req, res) => {
       res.end(content);
     }
   });
-});
+};
 
-server.listen(PORT, () => {
-  console.log(`=======================================================`);
-  console.log(`🚀 HostelFlow Native Server running on http://localhost:${PORT}`);
-  console.log(`=======================================================`);
-});
+const server = http.createServer(handleRequest);
+
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`=======================================================`);
+    console.log(`🚀 HostelFlow Native Server running on http://localhost:${PORT}`);
+    console.log(`=======================================================`);
+  });
+}
+
+module.exports = handleRequest;
