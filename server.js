@@ -219,17 +219,43 @@ function generateMonthlyLedger(student, payments) {
 
 // Helper to parse JSON request body
 function parseRequestBody(req) {
-  if (req.body && typeof req.body === 'object') {
-    return Promise.resolve(req.body);
+  if (req.body !== undefined && req.body !== null) {
+    if (typeof req.body === 'object') {
+      return Promise.resolve(req.body);
+    }
+    if (typeof req.body === 'string') {
+      try {
+        return Promise.resolve(req.body ? JSON.parse(req.body) : {});
+      } catch (e) {
+        return Promise.resolve({});
+      }
+    }
   }
   return new Promise((resolve) => {
     let body = '';
+    let resolved = false;
+
+    const timer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        try {
+          resolve(body ? JSON.parse(body) : {});
+        } catch (e) {
+          resolve({});
+        }
+      }
+    }, 800);
+
     req.on('data', chunk => { body += chunk.toString(); });
     req.on('end', () => {
-      try {
-        resolve(body ? (typeof body === 'string' ? JSON.parse(body) : body) : {});
-      } catch (err) {
-        resolve({});
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timer);
+        try {
+          resolve(body ? (typeof body === 'string' ? JSON.parse(body) : body) : {});
+        } catch (err) {
+          resolve({});
+        }
       }
     });
   });
