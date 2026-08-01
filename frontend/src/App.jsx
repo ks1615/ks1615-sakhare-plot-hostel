@@ -91,7 +91,7 @@ export default function App() {
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
         <main className="flex-1 p-4 lg:p-8 overflow-y-auto max-w-7xl mx-auto w-full">
-          {role === 'owner' ? renderOwnerContent() : renderStudentContent()}
+          {role === 'owner' || role === 'admin' ? renderOwnerContent() : renderStudentContent()}
         </main>
       </div>
     </div>

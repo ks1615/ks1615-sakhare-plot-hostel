@@ -38,15 +38,42 @@ export default function OwnerDashboard({ setActiveTab }) {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const summary = await fetchApi('/students/stats/summary');
-      const complaintsRes = await fetchApi('/complaints');
-      const leavesRes = await fetchApi('/leaves');
+      const summaryPromise = fetchApi('/students/stats/summary').catch(() => null);
+      const complaintsPromise = fetchApi('/complaints').catch(() => ({ complaints: [] }));
+      const leavesPromise = fetchApi('/leaves').catch(() => ({ leaves: [] }));
 
-      setStats(summary);
-      setRecentComplaints(complaintsRes.complaints ? complaintsRes.complaints.slice(0, 4) : []);
-      setRecentLeaves(leavesRes.leaves ? leavesRes.leaves.filter(l => l.status === 'Pending').slice(0, 4) : []);
+      const [summary, complaintsRes, leavesRes] = await Promise.all([
+        summaryPromise,
+        complaintsPromise,
+        leavesPromise
+      ]);
+
+      const defaultStats = {
+        totalStudents: 0,
+        occupiedBeds: 0,
+        vacantBeds: 15,
+        totalCapacity: 15,
+        collectedRevenue: 0,
+        pendingRevenue: 0,
+        pendingComplaints: 0,
+        pendingLeaves: 0
+      };
+
+      setStats(summary || defaultStats);
+      setRecentComplaints(complaintsRes?.complaints ? complaintsRes.complaints.slice(0, 4) : []);
+      setRecentLeaves(leavesRes?.leaves ? leavesRes.leaves.filter(l => l.status === 'Pending' || l.status === 'pending').slice(0, 4) : []);
     } catch (err) {
       console.error('Failed loading dashboard data:', err);
+      setStats({
+        totalStudents: 0,
+        occupiedBeds: 0,
+        vacantBeds: 15,
+        totalCapacity: 15,
+        collectedRevenue: 0,
+        pendingRevenue: 0,
+        pendingComplaints: 0,
+        pendingLeaves: 0
+      });
     } finally {
       setLoading(false);
     }

@@ -32,7 +32,8 @@ export default function Sidebar({ activeTab, setActiveTab }) {
     { id: 'notices', label: 'Notice Board', icon: Bell },
   ];
 
-  const navItems = role === 'owner' ? ownerNavItems : studentNavItems;
+  const isOwner = role === 'owner' || role === 'admin';
+  const navItems = isOwner ? ownerNavItems : studentNavItems;
 
   return (
     <aside className="no-print w-64 bg-slate-900/60 border-r border-slate-800/80 p-4 flex flex-col justify-between min-h-[calc(100vh-65px)]">
@@ -40,7 +41,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
         {/* Navigation Section Title */}
         <div>
           <p className="px-3 text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">
-            {role === 'owner' ? 'Owner Control Center' : 'Student Portal'}
+            {isOwner ? 'Owner Control Center' : 'Student Portal'}
           </p>
           <nav className="space-y-1">
             {navItems.map((item) => {

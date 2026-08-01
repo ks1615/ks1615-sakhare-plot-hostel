@@ -40,6 +40,12 @@ router.get('/', authMiddleware, (req, res) => {
   });
 });
 
+// GET /api/payments/qr-settings & /api/payments/qr-payload
+router.get('/qr-settings', authMiddleware, (req, res) => {
+  const db = getMemoryDB();
+  return res.json({ settings: db.settings, upiId: db.settings.upiId || '9322465627@ybl' });
+});
+
 // GET /api/payments/qr-payload - Get dynamic UPI QR metadata
 router.get('/qr-payload', authMiddleware, (req, res) => {
   const db = getMemoryDB();
@@ -61,6 +67,45 @@ router.get('/qr-payload', authMiddleware, (req, res) => {
     note: refNote,
     upiLink,
     qrText: upiLink
+  });
+});
+
+// POST /api/payments/submit-upi - Student UTR Proof Submission
+router.post('/submit-upi', authMiddleware, (req, res) => {
+  const db = getMemoryDB();
+  const { month_year, month, amount, utr_number, upiTransactionId, payment_app, paymentMethod } = req.body;
+
+  const currentStudent = (db.students || []).find(s => s.id === req.user.id || (s.email && s.email.toLowerCase() === (req.user.email || '').toLowerCase())) || db.students[0];
+  const monthStr = month_year || month || 'August 2026';
+  const amountVal = Number(amount) || (currentStudent ? currentStudent.monthlyRent : 6500);
+  const utrVal = utr_number || upiTransactionId || `UPI-${Date.now().toString().slice(-6)}`;
+  const appVal = payment_app || paymentMethod || 'UPI QR';
+
+  const newPayment = {
+    id: 'pay-' + Date.now(),
+    studentId: currentStudent ? currentStudent.id : req.user.id,
+    studentName: currentStudent ? currentStudent.name : req.user.name,
+    roomNo: currentStudent ? currentStudent.roomNo : (req.user.roomNo || '01'),
+    month: monthStr,
+    year: new Date().getFullYear(),
+    amount: amountVal,
+    type: 'rent',
+    status: 'pending_owner',
+    upiTransactionId: utrVal,
+    paymentMethod: appVal,
+    notes: `Submitted by resident via ${appVal} (UTR: ${utrVal})`,
+    submittedBy: req.user.name || 'Student Resident',
+    confirmedBy: null,
+    date: new Date().toISOString().split('T')[0],
+    createdAt: new Date().toISOString()
+  };
+
+  db.payments.unshift(newPayment);
+  saveMemoryDB(db);
+
+  return res.status(201).json({
+    message: 'Payment submission received and sent to owner for verification',
+    payment: newPayment
   });
 });
 
