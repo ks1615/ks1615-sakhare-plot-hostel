@@ -271,6 +271,11 @@ async function handleRequest(req, res) {
   let pathname = parsedUrl.pathname || '/';
   pathname = pathname.split('?')[0];
 
+  // If request is from Vercel function and missing /api prefix
+  if (pathname.startsWith('/auth') || pathname.startsWith('/students') || pathname.startsWith('/payments') || pathname.startsWith('/rooms') || pathname.startsWith('/complaints') || pathname.startsWith('/leaves') || pathname.startsWith('/notices')) {
+    pathname = '/api' + pathname;
+  }
+
   // Keep original pathname for routing and static asset serving
 
   const method = req.method;
