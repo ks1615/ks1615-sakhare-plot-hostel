@@ -62,18 +62,26 @@ const initialSeed = {
   }
 };
 
-// Ensure data folder and file exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-if (!fs.existsSync(DB_FILE)) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(initialSeed, null, 2));
+// Ensure data directory & db.json exist
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(DB_FILE)) {
+    fs.writeFileSync(DB_FILE, JSON.stringify(initialSeed, null, 2));
+  }
+} catch (err) {
+  console.error('Data directory initialization warning:', err);
 }
 
 function getDB() {
   let db;
   try {
-    db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    if (fs.existsSync(DB_FILE)) {
+      db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    } else {
+      db = { ...initialSeed };
+    }
   } catch (err) {
     db = { ...initialSeed };
   }
@@ -143,8 +151,14 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Auth middleware to attach authUser
+// Express middleware to normalize Vercel rewritten paths
 app.use((req, res, next) => {
+  if (req.headers && req.headers['x-matched-path']) {
+    const matched = req.headers['x-matched-path'];
+    if (matched.startsWith('/api')) {
+      req.url = matched;
+    }
+  }
   const authHeader = req.headers.authorization;
   if (authHeader) {
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
@@ -155,9 +169,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// --- AUTH ENDPOINTS ---
+// Create Router for API routes
+const apiRouter = express.Router();
 
-app.post(['/api/auth/login', '/auth/login'], (req, res) => {
+// --- AUTH ROUTER ENDPOINTS ---
+
+apiRouter.post('/auth/login', (req, res) => {
   const body = req.body || {};
   const email = (body.email || '').trim();
   const password = (body.password || '').trim();
@@ -237,7 +254,7 @@ app.post(['/api/auth/login', '/auth/login'], (req, res) => {
   });
 });
 
-app.post(['/api/auth/register', '/auth/register'], (req, res) => {
+apiRouter.post('/auth/register', (req, res) => {
   const body = req.body || {};
   const name = (body.name || '').trim();
   const phone = (body.phone || '').trim();
@@ -292,7 +309,7 @@ app.post(['/api/auth/register', '/auth/register'], (req, res) => {
   });
 });
 
-app.get(['/api/auth/me', '/auth/me'], (req, res) => {
+apiRouter.get('/auth/me', (req, res) => {
   if (!req.authUser) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -301,9 +318,9 @@ app.get(['/api/auth/me', '/auth/me'], (req, res) => {
   return res.status(200).json({ user: userObj });
 });
 
-// --- STUDENT & OWNER DATA ENDPOINTS ---
+// --- STUDENTS ROUTER ENDPOINTS ---
 
-app.get(['/api/students/stats/summary', '/students/stats/summary'], (req, res) => {
+apiRouter.get('/students/stats/summary', (req, res) => {
   const db = getDB();
   const totalStudents = db.students ? db.students.length : 0;
   let totalCapacity = 0;
@@ -341,12 +358,12 @@ app.get(['/api/students/stats/summary', '/students/stats/summary'], (req, res) =
   });
 });
 
-app.get(['/api/students', '/students'], (req, res) => {
+apiRouter.get('/students', (req, res) => {
   const db = getDB();
   return res.status(200).json({ students: db.students || [] });
 });
 
-app.post(['/api/students', '/students'], (req, res) => {
+apiRouter.post('/students', (req, res) => {
   const body = req.body || {};
   const db = getDB();
   const newStudent = {
@@ -364,7 +381,7 @@ app.post(['/api/students', '/students'], (req, res) => {
   return res.status(201).json({ message: 'Student created', student: newStudent });
 });
 
-app.delete(['/api/students/:id', '/students/:id'], (req, res) => {
+apiRouter.delete('/students/:id', (req, res) => {
   const { id } = req.params;
   const db = getDB();
   db.students = (db.students || []).filter(s => String(s.id) !== String(id));
@@ -372,14 +389,14 @@ app.delete(['/api/students/:id', '/students/:id'], (req, res) => {
   return res.status(200).json({ message: 'Student deleted' });
 });
 
-// --- PAYMENTS ENDPOINTS ---
+// --- PAYMENTS ROUTER ENDPOINTS ---
 
-app.get(['/api/payments', '/payments'], (req, res) => {
+apiRouter.get('/payments', (req, res) => {
   const db = getDB();
   return res.status(200).json({ payments: db.payments || [] });
 });
 
-app.get(['/api/payments/qr-settings', '/payments/qr-settings'], (req, res) => {
+apiRouter.get('/payments/qr-settings', (req, res) => {
   const db = getDB();
   const settings = db.qrSettings || {};
   const upiId = settings.upi_id || '9322465627@ybl';
@@ -395,7 +412,7 @@ app.get(['/api/payments/qr-settings', '/payments/qr-settings'], (req, res) => {
   });
 });
 
-app.post(['/api/payments/qr-settings', '/payments/qr-settings'], (req, res) => {
+apiRouter.post('/payments/qr-settings', (req, res) => {
   const body = req.body || {};
   const db = getDB();
   db.qrSettings = {
@@ -409,7 +426,7 @@ app.post(['/api/payments/qr-settings', '/payments/qr-settings'], (req, res) => {
   return res.status(200).json({ message: 'QR settings updated', settings: db.qrSettings });
 });
 
-app.post(['/api/payments', '/payments', '/api/payments/submit-upi', '/payments/submit-upi'], (req, res) => {
+apiRouter.post(['/payments', '/payments/submit-upi'], (req, res) => {
   const body = req.body || {};
   const db = getDB();
   const monthStr = body.month_year || body.month || 'August 2026';
@@ -470,7 +487,7 @@ app.post(['/api/payments', '/payments', '/api/payments/submit-upi', '/payments/s
   return res.status(201).json({ message: 'Payment created', payment: newPayment });
 });
 
-app.put(['/api/payments/verify/:id', '/payments/verify/:id', '/api/payments/:id/confirm', '/payments/:id/confirm'], (req, res) => {
+apiRouter.put(['/payments/verify/:id', '/payments/:id/confirm'], (req, res) => {
   const { id } = req.params;
   const body = req.body || {};
   const db = getDB();
@@ -485,7 +502,7 @@ app.put(['/api/payments/verify/:id', '/payments/verify/:id', '/api/payments/:id/
   return res.status(200).json({ message: 'Payment verified', payment });
 });
 
-app.get(['/api/payments/receipt/:id', '/payments/receipt/:id'], (req, res) => {
+apiRouter.get('/payments/receipt/:id', (req, res) => {
   const { id } = req.params;
   const db = getDB();
   const payment = (db.payments || []).find(p => String(p.id) === String(id)) || (db.payments && db.payments[0]);
@@ -494,17 +511,17 @@ app.get(['/api/payments/receipt/:id', '/payments/receipt/:id'], (req, res) => {
 
 // --- ROOMS, COMPLAINTS, LEAVES, NOTICES ---
 
-app.get(['/api/rooms', '/rooms'], (req, res) => {
+apiRouter.get('/rooms', (req, res) => {
   const db = getDB();
   return res.status(200).json({ rooms: db.rooms || [] });
 });
 
-app.get(['/api/complaints', '/complaints'], (req, res) => {
+apiRouter.get('/complaints', (req, res) => {
   const db = getDB();
   return res.status(200).json({ complaints: db.complaints || [] });
 });
 
-app.post(['/api/complaints', '/complaints'], (req, res) => {
+apiRouter.post('/complaints', (req, res) => {
   const body = req.body || {};
   const db = getDB();
   const newComplaint = {
@@ -525,12 +542,12 @@ app.post(['/api/complaints', '/complaints'], (req, res) => {
   return res.status(201).json({ message: 'Complaint submitted', complaint: newComplaint });
 });
 
-app.get(['/api/leaves', '/leaves'], (req, res) => {
+apiRouter.get('/leaves', (req, res) => {
   const db = getDB();
   return res.status(200).json({ leaves: db.leaves || [] });
 });
 
-app.post(['/api/leaves', '/leaves'], (req, res) => {
+apiRouter.post('/leaves', (req, res) => {
   const body = req.body || {};
   const db = getDB();
   const newLeave = {
@@ -550,10 +567,14 @@ app.post(['/api/leaves', '/leaves'], (req, res) => {
   return res.status(201).json({ message: 'Leave request submitted', leave: newLeave });
 });
 
-app.get(['/api/notices', '/notices'], (req, res) => {
+apiRouter.get('/notices', (req, res) => {
   const db = getDB();
   return res.status(200).json({ notices: db.notices || [] });
 });
+
+// MOUNT ROUTER ON BOTH /api AND / TO GUARANTEE 100% MATCHING ON VERCEL & RENDER
+app.use('/api', apiRouter);
+app.use('/', apiRouter);
 
 // Serve Frontend Static Assets
 const DIST_DIR = fs.existsSync(path.join(__dirname, 'dist')) ? path.join(__dirname, 'dist') : path.join(__dirname, 'frontend/dist');
