@@ -151,14 +151,8 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Express middleware to normalize Vercel rewritten paths
+// Express middleware for Auth JWT Verification & Header parsing
 app.use((req, res, next) => {
-  if (req.headers && req.headers['x-matched-path']) {
-    const matched = req.headers['x-matched-path'];
-    if (matched.startsWith('/api')) {
-      req.url = matched;
-    }
-  }
   const authHeader = req.headers.authorization;
   if (authHeader) {
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
@@ -260,27 +254,37 @@ apiRouter.post('/auth/register', (req, res) => {
   const phone = (body.phone || '').trim();
   const password = (body.password || 'student123').trim();
   const roomNo = body.roomNo || body.room_number || '101';
+  const role = body.role === 'owner' || body.role === 'admin' ? 'admin' : 'student';
+  const email = (body.email || (phone ? `${phone.replace(/\D/g, '')}@sakharehostel.com` : '')).trim();
 
-  if (!name || !phone) {
-    return res.status(400).json({ error: 'Name and phone number are required' });
+  if (!name || (!phone && !email)) {
+    return res.status(400).json({ error: 'Name and phone number or email are required' });
   }
 
   const db = getDB();
-  const phoneDigits = phone.replace(/\D/g, '');
-  const existing = db.users.find(u => u.phone && u.phone.replace(/\D/g, '') === phoneDigits);
+  const phoneDigits = phone ? phone.replace(/\D/g, '') : '';
+  const existing = db.users.find(u => {
+    const uPhoneDigits = u.phone ? u.phone.replace(/\D/g, '') : '';
+    const uEmail = (u.email || '').toLowerCase().trim();
+    return (phoneDigits && uPhoneDigits && phoneDigits.length >= 10 && uPhoneDigits.endsWith(phoneDigits.slice(-10))) ||
+           (email && uEmail === email.toLowerCase());
+  });
 
   if (existing) {
-    return res.status(400).json({ error: 'Student mobile number is already registered' });
+    return res.status(400).json({ error: 'Mobile number or email is already registered' });
   }
 
   const newUser = {
     id: `u-${Date.now()}`,
     name,
-    email: `${phoneDigits}@sakharehostel.com`,
+    email: email || `${phoneDigits}@sakharehostel.com`,
     password,
     phone,
-    role: 'student',
+    role,
     roomNo,
+    guardianName: body.guardian_name || '',
+    guardianPhone: body.guardian_phone || '',
+    address: body.address || '',
     hostelName: db.settings.hostelName
   };
 
@@ -288,19 +292,25 @@ apiRouter.post('/auth/register', (req, res) => {
     id: `s-${Date.now()}`,
     name,
     phone,
+    email: email || `${phoneDigits}@sakharehostel.com`,
     password,
     roomNo,
-    monthlyRent: 6500,
+    guardianName: body.guardian_name || '',
+    guardianPhone: body.guardian_phone || '',
+    address: body.address || '',
+    monthlyRent: db.settings.monthlyRentDefault || 6500,
     depositAmount: 5000,
     status: 'active',
     createdAt: new Date().toISOString()
   };
 
   db.users.push(newUser);
-  db.students.push(newStudent);
+  if (role === 'student') {
+    db.students.push(newStudent);
+  }
   saveDB(db);
 
-  const token = createJWT({ id: newUser.id, name: newUser.name, email: newUser.email, role: 'student', roomNo: newUser.roomNo });
+  const token = createJWT({ id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role, roomNo: newUser.roomNo });
 
   return res.status(201).json({
     message: 'Registration successful',
@@ -580,11 +590,14 @@ app.use('/', apiRouter);
 const DIST_DIR = fs.existsSync(path.join(__dirname, 'dist')) ? path.join(__dirname, 'dist') : path.join(__dirname, 'frontend/dist');
 app.use(express.static(DIST_DIR));
 
-app.get('*', (req, res) => {
-  if (req.path.startsWith('/api')) {
-    return res.status(404).json({ error: `API route not found: ${req.method} ${req.path}` });
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api') || req.url.startsWith('/api')) {
+    return res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl || req.url}` });
   }
-  res.sendFile(path.join(DIST_DIR, 'index.html'));
+  if (req.method === 'GET') {
+    return res.sendFile(path.join(DIST_DIR, 'index.html'));
+  }
+  next();
 });
 
 if (require.main === module) {
